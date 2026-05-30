@@ -3,6 +3,114 @@ import 'package:test/test.dart';
 
 void main() {
   group('TextField Multi-line', () {
+    test('auto-grows from minLines to maxLines', () async {
+      await testNocterm(
+        'auto-growing multiline field',
+        (tester) async {
+          final controller = TextEditingController(text: '');
+
+          await tester.pumpComponent(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: controller,
+                  width: 20,
+                  minLines: 1,
+                  maxLines: 3,
+                  focused: true,
+                  decoration: InputDecoration(
+                    border: BoxBorder.all(),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 1),
+                  ),
+                  showCursor: true,
+                  cursorBlinkRate: null,
+                ),
+              ],
+            ),
+          );
+
+          expect(tester.toSnapshot().split('\n'), hasLength(3));
+
+          controller.text = 'Line 1\nLine 2';
+          controller.selection =
+              TextSelection.collapsed(offset: controller.text.length);
+          await tester.pump();
+
+          expect(tester.terminalState, containsText('Line 1'));
+          expect(tester.terminalState, containsText('Line 2'));
+          expect(tester.toSnapshot().split('\n'), hasLength(4));
+
+          controller.text = 'Line 1\nLine 2\nLine 3\nLine 4';
+          controller.selection =
+              TextSelection.collapsed(offset: controller.text.length);
+          await tester.pump();
+
+          expect(tester.terminalState, isNot(containsText('Line 1')));
+          expect(tester.terminalState, containsText('Line 2'));
+          expect(tester.terminalState, containsText('Line 3'));
+          expect(tester.terminalState, containsText('Line 4'));
+          expect(tester.toSnapshot().split('\n'), hasLength(5));
+        },
+      );
+    });
+
+    test('keeps accepting lines past maxLines and scrolls vertically',
+        () async {
+      await testNocterm(
+        'scrolling multiline field',
+        (tester) async {
+          final controller = TextEditingController(text: '');
+
+          await tester.pumpComponent(
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: controller,
+                  width: 20,
+                  minLines: 1,
+                  maxLines: 2,
+                  focused: true,
+                  decoration: InputDecoration(
+                    border: BoxBorder.all(),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 1),
+                  ),
+                  showCursor: true,
+                  cursorBlinkRate: null,
+                ),
+              ],
+            ),
+          );
+
+          await tester.enterText('One');
+          await tester.sendKeyEvent(KeyboardEvent(
+            logicalKey: LogicalKey.enter,
+            character: '\n',
+            modifiers: const ModifierKeys(shift: true),
+          ));
+          await tester.enterText('Two');
+          await tester.sendKeyEvent(KeyboardEvent(
+            logicalKey: LogicalKey.enter,
+            character: '\n',
+            modifiers: const ModifierKeys(shift: true),
+          ));
+          await tester.enterText('Three');
+
+          expect(controller.text, equals('One\nTwo\nThree'));
+          expect(tester.terminalState, isNot(containsText('One')));
+          expect(tester.terminalState, containsText('Two'));
+          expect(tester.terminalState, containsText('Three'));
+
+          await tester.sendKey(LogicalKey.pageUp);
+
+          expect(tester.terminalState, containsText('One'));
+          expect(tester.terminalState, containsText('Two'));
+          expect(tester.terminalState, isNot(containsText('Three')));
+        },
+      );
+    });
+
     test('cursor position is correct with wrapped lines', () async {
       await testNocterm(
         'wrapped lines cursor',

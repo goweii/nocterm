@@ -438,6 +438,12 @@ class _TextFieldState extends State<TextField> {
     } else if (key == LogicalKey.arrowDown && component.maxLines != 1) {
       _moveCursorVertically(1, false);
       return true;
+    } else if (key == LogicalKey.pageUp && component.maxLines != 1) {
+      _scrollVertically(-1);
+      return true;
+    } else if (key == LogicalKey.pageDown && component.maxLines != 1) {
+      _scrollVertically(1);
+      return true;
     } else if (key == LogicalKey.home) {
       _moveCursorToStart();
       return true;
@@ -556,18 +562,6 @@ class _TextFieldState extends State<TextField> {
       final deleteLength = isCollapsed ? 0 : (clampedEnd - clampedStart);
 
       if (currentLength - deleteLength + insertLength > component.maxLength!) {
-        return;
-      }
-    }
-
-    // Check max lines for multi-line fields
-    if (component.maxLines != null &&
-        component.maxLines! > 1 &&
-        char.contains('\n')) {
-      final currentLines = text.split('\n').length;
-      final newLines = char.split('\n').length - 1;
-
-      if (currentLines + newLines > component.maxLines!) {
         return;
       }
     }
@@ -790,6 +784,10 @@ class _TextFieldState extends State<TextField> {
     _renderTextField?.moveCursorVertically(direction, extendSelection);
   }
 
+  void _scrollVertically(int direction) {
+    _renderTextField?.scrollVertically(direction);
+  }
+
   void _moveCursorToStart() {
     _controller.selection = const TextSelection.collapsed(offset: 0);
     _renderTextField?.resetTargetColumn();
@@ -948,6 +946,7 @@ class _TextFieldState extends State<TextField> {
       selectionColor: effectiveSelectionColor,
       textAlign: component.textAlign,
       maxLines: component.maxLines,
+      minLines: component.minLines,
       isFocused: isFocused, // Pass focus state to render object
       obscureText: component.obscureText,
       obscuringCharacter: component.obscuringCharacter,
@@ -961,7 +960,7 @@ class _TextFieldState extends State<TextField> {
     if (decoration.border != null || decoration.fillColor != null) {
       content = Container(
         width: component.width,
-        height: component.height ?? (component.maxLines ?? 1).toDouble() + 2,
+        height: component.height,
         padding: decoration.contentPadding ??
             const EdgeInsets.symmetric(horizontal: 1),
         decoration: BoxDecoration(
@@ -998,6 +997,7 @@ class _TextFieldContent extends SingleChildRenderObjectComponent {
     this.selectionColor,
     required this.textAlign,
     this.maxLines,
+    this.minLines,
     required this.isFocused,
     this.obscureText = false,
     this.obscuringCharacter = '•',
@@ -1017,6 +1017,7 @@ class _TextFieldContent extends SingleChildRenderObjectComponent {
   final Color? selectionColor;
   final TextAlign textAlign;
   final int? maxLines;
+  final int? minLines;
   final bool isFocused;
   final bool obscureText;
   final String obscuringCharacter;
@@ -1038,6 +1039,7 @@ class _TextFieldContent extends SingleChildRenderObjectComponent {
       selectionColor: selectionColor,
       textAlign: textAlign,
       maxLines: maxLines,
+      minLines: minLines,
       isFocused: isFocused,
       obscureText: obscureText,
       obscuringCharacter: obscuringCharacter,
@@ -1062,6 +1064,7 @@ class _TextFieldContent extends SingleChildRenderObjectComponent {
       ..selectionColor = selectionColor
       ..textAlign = textAlign
       ..maxLines = maxLines
+      ..minLines = minLines
       ..isFocused = isFocused
       ..obscureText = obscureText
       ..obscuringCharacter = obscuringCharacter;
@@ -1083,6 +1086,7 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
     Color? selectionColor,
     required TextAlign textAlign,
     int? maxLines,
+    int? minLines,
     required bool isFocused,
     bool obscureText = false,
     String obscuringCharacter = '•',
@@ -1099,6 +1103,7 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
         _selectionColor = selectionColor,
         _textAlign = textAlign,
         _maxLines = maxLines,
+        _minLines = minLines,
         _isFocused = isFocused,
         _obscureText = obscureText,
         _obscuringCharacter = obscuringCharacter {
@@ -1120,6 +1125,7 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
   @override
   bool hitTestSelf(Offset position) => true;
   int? _maxLines;
+  int? _minLines;
   bool _isFocused;
   bool _obscureText;
   String _obscuringCharacter;
@@ -1129,6 +1135,7 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
 
   // Store the layout result for proper Unicode rendering
   TextLayoutResult? _layoutResult;
+  int _verticalOffset = 0;
 
   // Track target visual column for vertical movement
   int? _targetVisualColumn;
@@ -1175,6 +1182,7 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
   set selection(TextSelection value) {
     if (_selection != value) {
       _selection = value;
+      _ensureCursorVisible();
       markNeedsPaint();
     }
   }
@@ -1228,6 +1236,13 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
     }
   }
 
+  set minLines(int? value) {
+    if (_minLines != value) {
+      _minLines = value;
+      markNeedsLayout();
+    }
+  }
+
   set isFocused(bool value) {
     if (_isFocused != value) {
       _isFocused = value;
@@ -1268,6 +1283,7 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
     if (newSelection != _selection) {
       _selection = newSelection;
       _targetVisualColumn = null; // Reset target column
+      _ensureCursorVisible();
       onSelectionChange?.call(newSelection);
       markNeedsPaint();
     }
@@ -1301,6 +1317,7 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
 
     if (newSelection != _selection) {
       _selection = newSelection;
+      _ensureCursorVisible();
       onSelectionChange?.call(newSelection);
       markNeedsPaint();
     }
@@ -1321,6 +1338,7 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
     if (newSelection != _selection) {
       _selection = newSelection;
       _targetVisualColumn = null; // Reset target column
+      _ensureCursorVisible();
       onSelectionChange?.call(newSelection);
       markNeedsPaint();
     }
@@ -1343,6 +1361,7 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
     if (newSelection != _selection) {
       _selection = newSelection;
       _targetVisualColumn = null; // Reset target column
+      _ensureCursorVisible();
       onSelectionChange?.call(newSelection);
       markNeedsPaint();
     }
@@ -1365,6 +1384,7 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
     if (newSelection != _selection) {
       _selection = newSelection;
       _targetVisualColumn = null; // Reset target column
+      _ensureCursorVisible();
       onSelectionChange?.call(newSelection);
       markNeedsPaint();
     }
@@ -1373,6 +1393,52 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
   /// Reset target visual column (used when text changes)
   void resetTargetColumn() {
     _targetVisualColumn = null;
+  }
+
+  int get _visibleLineCount {
+    if (!hasSize) return 1;
+    return math.max(1, size.height.floor());
+  }
+
+  int _maxVerticalOffsetFor(int visibleLineCount) {
+    final lineCount = _layoutResult?.lines.length ?? 0;
+    return math.max(0, lineCount - visibleLineCount);
+  }
+
+  void _ensureCursorVisible() {
+    if (_layoutResult == null || _maxLines == 1 || !hasSize) return;
+
+    final cursorPosition = CursorMovement.getCursorPosition(
+      layoutResult: _layoutResult!,
+      text: _obscureText ? _obscuringCharacter * _text.length : _text,
+      cursorOffset: _selection.extentOffset,
+    );
+    final visibleLineCount = _visibleLineCount;
+    final maxOffset = _maxVerticalOffsetFor(visibleLineCount);
+
+    if (cursorPosition.line < _verticalOffset) {
+      _verticalOffset = cursorPosition.line.clamp(0, maxOffset).toInt();
+    } else if (cursorPosition.line >= _verticalOffset + visibleLineCount) {
+      _verticalOffset = (cursorPosition.line - visibleLineCount + 1)
+          .clamp(0, maxOffset)
+          .toInt();
+    } else {
+      _verticalOffset = _verticalOffset.clamp(0, maxOffset).toInt();
+    }
+  }
+
+  void scrollVertically(int direction) {
+    if (_layoutResult == null || _maxLines == 1 || direction == 0) return;
+
+    final visibleLineCount = _visibleLineCount;
+    final maxOffset = _maxVerticalOffsetFor(visibleLineCount);
+    final delta = direction * visibleLineCount;
+    final newOffset = (_verticalOffset + delta).clamp(0, maxOffset).toInt();
+
+    if (newOffset != _verticalOffset) {
+      _verticalOffset = newOffset;
+      markNeedsPaint();
+    }
   }
 
   // --- Mouse interaction ---
@@ -1423,8 +1489,12 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
         _isLeftButtonPressed = false;
       },
       onHover: (event) {
-        if (event.button == MouseButton.wheelUp ||
-            event.button == MouseButton.wheelDown) {
+        if (event.button == MouseButton.wheelUp) {
+          scrollVertically(-1);
+          return;
+        }
+        if (event.button == MouseButton.wheelDown) {
+          scrollVertically(1);
           return;
         }
 
@@ -1471,7 +1541,7 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
         _obscureText ? _obscuringCharacter * _text.length : _text;
 
     final charIndex = selection_utils.getCharacterIndexAtLocalPosition(
-      localPos: Offset(localX, localY),
+      localPos: Offset(localX, localY + _verticalOffset),
       text: textForHitTest,
       lines: _layoutResult?.lines ?? const [],
     );
@@ -1513,6 +1583,7 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
     if (newSelection != _selection) {
       _selection = newSelection;
       _targetVisualColumn = null;
+      _ensureCursorVisible();
       onSelectionChange?.call(newSelection);
       markNeedsPaint();
     }
@@ -1531,6 +1602,7 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
     if (newSelection != _selection) {
       _selection = newSelection;
       _targetVisualColumn = null;
+      _ensureCursorVisible();
       onSelectionChange?.call(newSelection);
       markNeedsPaint();
     }
@@ -1560,6 +1632,7 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
       if (newSelection != _selection) {
         _selection = newSelection;
         _targetVisualColumn = null;
+        _ensureCursorVisible();
         onSelectionChange?.call(newSelection);
         markNeedsPaint();
       }
@@ -1569,6 +1642,7 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
     final newSelection = TextSelection(baseOffset: start, extentOffset: end);
     _selection = newSelection;
     _targetVisualColumn = null;
+    _ensureCursorVisible();
     onSelectionChange?.call(newSelection);
     markNeedsPaint();
   }
@@ -1637,18 +1711,26 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
       softWrap: _maxLines != 1, // Enable wrapping for multi-line fields
       overflow: TextOverflow.clip,
       textAlign: _textAlign,
-      maxLines: _maxLines,
+      maxLines: _maxLines == 1 ? 1 : null,
       maxWidth: maxWidth,
     );
 
     _layoutResult = TextLayoutEngine.layout(textToLayout, config);
 
-    // Size based on actual layout result
-    final actualHeight = _layoutResult!.actualHeight.toDouble();
+    final actualHeight = _layoutResult!.actualHeight;
+    final minVisibleLines = _minLines ?? 1;
+    var visibleHeight = math.max(minVisibleLines, actualHeight);
+    if (_maxLines != null) {
+      visibleHeight = math.min(_maxLines!, visibleHeight);
+    }
+    visibleHeight = math.max(1, visibleHeight);
+
     size = constraints.constrain(Size(
       constraints.maxWidth,
-      actualHeight,
+      visibleHeight.toDouble(),
     ));
+
+    _ensureCursorVisible();
   }
 
   @override
@@ -1663,9 +1745,14 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
 
     final lines = _layoutResult!.lines;
     final alignmentWidth = size.width.toInt();
+    final visibleLineCount = _visibleLineCount;
+    final maxOffset = _maxVerticalOffsetFor(visibleLineCount);
+    _verticalOffset = _verticalOffset.clamp(0, maxOffset).toInt();
+    final startLine = _verticalOffset;
+    final endLine = math.min(lines.length, startLine + visibleLineCount);
 
     // Paint each line from the layout result
-    for (int i = 0; i < lines.length; i++) {
+    for (int i = startLine; i < endLine; i++) {
       final line = lines[i];
 
       // Calculate horizontal offset based on text alignment
@@ -1684,7 +1771,12 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
       }
 
       _paintLineWithSelection(
-          canvas, Offset(xOffset, offset.dy + i), displayLine, textStyle, i);
+        canvas,
+        Offset(xOffset, offset.dy + i - startLine),
+        displayLine,
+        textStyle,
+        i,
+      );
     }
 
     // Paint cursor only for the focused field
@@ -1723,6 +1815,9 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
 
     final cursorTextOffset = _selection.extentOffset.clamp(0, _text.length);
     final lineStarts = selection_utils.lineStartOffsets(_text, lines);
+    final visibleLineCount = _visibleLineCount;
+    final startLine = _verticalOffset;
+    final endLine = startLine + visibleLineCount;
 
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
@@ -1731,6 +1826,10 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
           i + 1 < lineStarts.length ? lineStarts[i + 1] : _text.length + 1;
 
       if (cursorTextOffset < nextLineStartOffset || i == lines.length - 1) {
+        if (i < startLine || i >= endLine) {
+          break;
+        }
+
         final positionInLine =
             (cursorTextOffset - lineStartOffset).clamp(0, line.length);
 
@@ -1738,8 +1837,8 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
         final textBeforeCursor = line.substring(0, positionInLine);
         final visualColumn = UnicodeWidth.stringWidth(textBeforeCursor);
 
-        final cursorOffset =
-            offset + Offset(visualColumn.toDouble(), i.toDouble());
+        final cursorOffset = offset +
+            Offset(visualColumn.toDouble(), (i - startLine).toDouble());
 
         // Get the character at cursor position (or space if at end)
         final charAtCursor =
