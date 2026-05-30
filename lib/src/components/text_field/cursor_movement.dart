@@ -1,5 +1,5 @@
-import 'dart:math' as math;
 import 'package:characters/characters.dart';
+import '../../text/selection_utils.dart' as selection_utils;
 import '../../text/text_layout_engine.dart';
 import '../../utils/unicode_width.dart';
 
@@ -21,34 +21,19 @@ class CursorMovement {
       );
     }
 
-    // Find which line the cursor is on
-    // We need to track both the position in the layout lines and original text
-    int textOffset = 0;
-    int actualLineIndex = 0;
+    final cursor = cursorOffset.clamp(0, text.length);
+    final lineStarts =
+        selection_utils.lineStartOffsets(text, layoutResult.lines);
 
     for (int i = 0; i < layoutResult.lines.length; i++) {
       final line = layoutResult.lines[i];
-      final lineLength = line.length;
+      final lineStartOffset = lineStarts[i];
+      final lineEndOffset = lineStartOffset + line.length;
+      final nextLineStartOffset =
+          i + 1 < lineStarts.length ? lineStarts[i + 1] : text.length + 1;
 
-      // Check if there's a newline after this line in the original text
-      bool hasNewline = false;
-      if (i < layoutResult.lines.length - 1 &&
-          textOffset + lineLength < text.length) {
-        // The layout engine splits on newlines, so there should be a newline if we're not at the end
-        if (text[textOffset + lineLength] == '\n') {
-          hasNewline = true;
-        }
-      }
-
-      final lineEndOffset = textOffset + lineLength;
-      final lineEndWithNewline = lineEndOffset + (hasNewline ? 1 : 0);
-
-      // Check if cursor is on this line
-      if (cursorOffset < lineEndWithNewline ||
-          i == layoutResult.lines.length - 1) {
-        // Cursor is on this line
-        final positionInLine =
-            math.min(math.max(0, cursorOffset - textOffset), lineLength);
+      if (cursor < nextLineStartOffset || i == layoutResult.lines.length - 1) {
+        final positionInLine = (cursor - lineStartOffset).clamp(0, line.length);
         final textBeforeCursor =
             positionInLine > 0 ? line.substring(0, positionInLine) : '';
         final visualColumn = UnicodeWidth.stringWidth(textBeforeCursor);
@@ -57,27 +42,23 @@ class CursorMovement {
           line: i,
           column: positionInLine,
           visualColumn: visualColumn,
-          lineStartOffset: textOffset,
+          lineStartOffset: lineStartOffset,
           lineEndOffset: lineEndOffset,
-          actualLineIndex: actualLineIndex,
+          actualLineIndex: _actualLineIndexForOffset(text, lineStartOffset),
         );
-      }
-
-      textOffset = lineEndWithNewline;
-      if (hasNewline) {
-        actualLineIndex++;
       }
     }
 
     // Cursor is at the very end
     final lastLine = layoutResult.lines.last;
+    final lastLineStart = lineStarts.last;
     return CursorPosition(
       line: layoutResult.lines.length - 1,
       column: lastLine.length,
       visualColumn: UnicodeWidth.stringWidth(lastLine),
-      lineStartOffset: textOffset - lastLine.length,
-      lineEndOffset: textOffset,
-      actualLineIndex: actualLineIndex,
+      lineStartOffset: lastLineStart,
+      lineEndOffset: lastLineStart + lastLine.length,
+      actualLineIndex: _actualLineIndexForOffset(text, lastLineStart),
     );
   }
 
@@ -143,18 +124,11 @@ class CursorMovement {
     // Find the new cursor position on the target line
     final newLine = layoutResult.lines[targetLine];
 
-    // Calculate the line start offset
-    int newLineStartOffset = 0;
-    for (int i = 0; i < targetLine; i++) {
-      newLineStartOffset += layoutResult.lines[i].length;
-      // Add newline if it exists
-      if (i < layoutResult.lines.length - 1) {
-        final endOfLineOffset = newLineStartOffset;
-        if (endOfLineOffset < text.length && text[endOfLineOffset] == '\n') {
-          newLineStartOffset++;
-        }
-      }
-    }
+    final lineStarts = selection_utils.lineStartOffsets(
+      text,
+      layoutResult.lines,
+    );
+    final newLineStartOffset = lineStarts[targetLine];
 
     // Find position in new line that matches target visual column
     int columnInNewLine = 0;
@@ -171,6 +145,17 @@ class CursorMovement {
     }
 
     return newLineStartOffset + columnInNewLine;
+  }
+
+  static int _actualLineIndexForOffset(String text, int offset) {
+    final end = offset.clamp(0, text.length);
+    var line = 0;
+    for (var i = 0; i < end; i++) {
+      if (text.codeUnitAt(i) == 0x0a) {
+        line++;
+      }
+    }
+    return line;
   }
 
   /// Move cursor by word

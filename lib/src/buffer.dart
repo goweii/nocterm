@@ -92,6 +92,8 @@ class Buffer {
   /// Images are added via [markImageRegion] and should be processed and
   /// cleared by the terminal renderer after each frame.
   final List<PendingImage> pendingImages = [];
+  int? cursorX;
+  int? cursorY;
 
   Buffer(this.width, this.height)
       : cells = List.generate(
@@ -109,6 +111,13 @@ class Buffer {
   void setCell(int x, int y, Cell cell) {
     if (x >= 0 && x < width && y >= 0 && y < height) {
       cells[y][x] = cell;
+    }
+  }
+
+  void setCursorPosition(int x, int y) {
+    if (x >= 0 && x < width && y >= 0 && y < height) {
+      cursorX = x;
+      cursorY = y;
     }
   }
 

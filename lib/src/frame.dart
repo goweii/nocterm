@@ -77,6 +77,11 @@ class Frame {
     }
 
     terminal.write(output.toString());
+    final cursorX = buffer.cursorX;
+    final cursorY = buffer.cursorY;
+    if (cursorX != null && cursorY != null) {
+      terminal.moveCursor(cursorX, cursorY);
+    }
     terminal.flush();
 
     // Reset full redraw flag after first render

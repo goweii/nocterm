@@ -74,14 +74,25 @@ void paintTextWithSelection({
     return;
   }
 
+  final starts = lineStartOffsets(text, lines);
   final lineStartOffset =
-      (lines.isNotEmpty && lineIndex > 0 && lineIndex < lines.length)
-          ? lineStartOffsets(text, lines)[lineIndex]
-          : 0;
+      lineIndex >= 0 && lineIndex < starts.length ? starts[lineIndex] : 0;
   final lineEndOffset = lineStartOffset + line.length;
+  final nextLineStartOffset =
+      lineIndex + 1 < starts.length ? starts[lineIndex + 1] : text.length;
 
   final selStart = math.min(selectionStart, selectionEnd);
   final selEnd = math.max(selectionStart, selectionEnd);
+  final lineBreakSelected = nextLineStartOffset > lineEndOffset &&
+      selStart <= lineEndOffset &&
+      selEnd > lineEndOffset;
+
+  if (line.isEmpty && lineBreakSelected) {
+    final selectionStyle =
+        (style ?? const TextStyle()).copyWith(backgroundColor: selectionColor);
+    canvas.drawText(offset, ' ', style: selectionStyle);
+    return;
+  }
 
   if (selEnd > lineStartOffset && selStart < lineEndOffset) {
     final localSelStart = math.max(0, selStart - lineStartOffset);

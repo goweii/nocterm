@@ -1020,6 +1020,8 @@ class TerminalBinding extends NoctermBinding
     // Render pending sixel images
     _renderPendingImages(buffer);
 
+    _moveTerminalCursorToBufferCursor(buffer);
+
     terminal.flush();
   }
 
@@ -1089,7 +1091,19 @@ class TerminalBinding extends NoctermBinding
     // Render pending sixel images
     _renderPendingImages(buffer);
 
+    _moveTerminalCursorToBufferCursor(buffer);
+
     terminal.flush();
+  }
+
+  void _moveTerminalCursorToBufferCursor(buf.Buffer buffer) {
+    final x = buffer.cursorX;
+    final y = buffer.cursorY;
+    if (x == null || y == null) {
+      return;
+    }
+
+    terminal.moveCursor(x, y);
   }
 
   // Detailed timing instrumentation for profiling

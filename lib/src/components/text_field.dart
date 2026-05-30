@@ -1721,17 +1721,18 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
       return;
     }
 
-    // Find which line the cursor is on
-    int charCount = 0;
+    final cursorTextOffset = _selection.extentOffset.clamp(0, _text.length);
+    final lineStarts = selection_utils.lineStartOffsets(_text, lines);
+
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
-      final lineLength = line.length;
+      final lineStartOffset = lineStarts[i];
+      final nextLineStartOffset =
+          i + 1 < lineStarts.length ? lineStarts[i + 1] : _text.length + 1;
 
-      // Check if cursor is on this line
-      if (charCount + lineLength >= _selection.extentOffset ||
-          i == lines.length - 1) {
+      if (cursorTextOffset < nextLineStartOffset || i == lines.length - 1) {
         final positionInLine =
-            (_selection.extentOffset - charCount).clamp(0, lineLength);
+            (cursorTextOffset - lineStartOffset).clamp(0, line.length);
 
         // Calculate visual position using Unicode width
         final textBeforeCursor = line.substring(0, positionInLine);
@@ -1748,16 +1749,6 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
             canvas, cursorOffset, charAtCursor, positionInLine, cursorColor);
         break;
       }
-
-      charCount += lineLength;
-      // Only add 1 for actual newline characters, not wrapped lines
-      // Check if the accumulated text so far ends with a newline
-      if (i < lines.length - 1) {
-        final textSoFar = _text.substring(0, math.min(charCount, _text.length));
-        if (textSoFar.endsWith('\n')) {
-          charCount++; // Account for the newline character
-        }
-      }
     }
   }
 
@@ -1768,6 +1759,8 @@ class RenderTextField extends RenderObject with MouseTrackerAnnotationProvider {
     int cursorPos,
     Color cursorColor,
   ) {
+    canvas.setCursorPosition(position);
+
     switch (_cursorStyle) {
       case CursorStyle.block:
         // Filled block - traditional terminal cursor

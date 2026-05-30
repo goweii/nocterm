@@ -166,6 +166,11 @@ class App {
         clone.setCell(x, y, cell.copyWith());
       }
     }
+    final cursorX = original.cursorX;
+    final cursorY = original.cursorY;
+    if (cursorX != null && cursorY != null) {
+      clone.setCursorPosition(cursorX, cursorY);
+    }
     return clone;
   }
 

@@ -136,6 +136,24 @@ class TerminalCanvas {
     }
   }
 
+  /// Move the real terminal cursor to a local canvas position.
+  ///
+  /// The visual text cursor is painted into the buffer, but terminal IMEs use
+  /// the terminal's actual cursor coordinates for their composition window.
+  void setCursorPosition(Offset position) {
+    final x = position.dx.round();
+    final y = position.dy.round();
+
+    if (x < 0 || y < 0 || x >= area.width || y >= area.height) {
+      return;
+    }
+
+    _buffer.setCursorPosition(
+      area.left.round() + x,
+      area.top.round() + y,
+    );
+  }
+
   /// Fill a rectangle with a character
   void fillRect(Rect rect, String char, {TextStyle? style}) {
     // Guard against non-finite values (Infinity/NaN) which crash .round()
